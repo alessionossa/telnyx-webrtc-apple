@@ -9,7 +9,9 @@
 import Foundation
 import AVFoundation
 import WebRTC
+#if os(iOS)
 import CallKit
+#endif
 
 // MARK: - Notification Names
 public extension Notification.Name {
@@ -150,8 +152,13 @@ public class TxClient {
     public weak var delegate: TxClientDelegate?
     private var socket : Socket?
 
+    #if os(iOS)
     private var answerCallAction: CXAnswerCallAction? = nil
     private var endCallAction: CXEndCallAction? = nil
+    #else
+    private var answerCallAction: TxUnavailableCallAction? = nil
+    private var endCallAction: TxUnavailableCallAction? = nil
+    #endif
     private var sessionId : String?
     internal var txConfig: TxConfig?
     internal var serverConfiguration: TxServerConfiguration
@@ -251,6 +258,7 @@ public class TxClient {
         }
     }
 
+    #if os(iOS)
     /// Controls the audio device state when using CallKit integration.
     /// This property manages the WebRTC audio session activation and deactivation.
     ///
@@ -339,6 +347,15 @@ public class TxClient {
     /// The current audio route configuration.
     /// This provides information about the active input and output ports.
     let currentRoute = AVAudioSession.sharedInstance().currentRoute
+    #else
+    /// macOS has no `AVAudioSession`. WebRTC's default audio device module manages the
+    /// devices itself, so audio is always considered enabled. The setter is a no-op kept
+    /// for API compatibility with the iOS/CallKit flow.
+    public var isAudioDeviceEnabled: Bool {
+        get { return true }
+        set { Logger.log.i(message: "TxClient:: isAudioDeviceEnabled setter ignored on macOS (value: \(newValue))") }
+    }
+    #endif
     
     /// Client must be registered in order to receive or place calls.
     public var isRegistered: Bool {
@@ -402,7 +419,9 @@ public class TxClient {
         NetworkMonitor.shared.stopMonitoring()
         
         // Remove audio route change observer
+        #if os(iOS)
         NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
+        #endif
         
         // Remove ACM reset observers
         NotificationCenter.default.removeObserver(self, name: NSNotification.Name(InternalConfig.NotificationNames.acmResetStarted), object: nil)
@@ -410,7 +429,8 @@ public class TxClient {
         
         Logger.log.i(message: "TxClient deinitialized")
     }
-    
+
+    #if os(iOS)
     /// Sets up monitoring for audio route changes (e.g., headphones connected/disconnected, 
     /// Bluetooth device connected/disconnected).
     ///
@@ -579,6 +599,13 @@ public class TxClient {
         Logger.log.i(message: "[ACM_RESET] TxClient:: restoreSpeakerAfterReconnect() - Starting speaker restoration")
         restoreSpeakerWithVerification(maxAttempts: 5)
     }
+    #else
+    /// macOS has no `AVAudioSession` routes: nothing to monitor.
+    private func setupAudioRouteChangeMonitoring() {}
+
+    /// Speaker/earpiece routing does not exist on macOS: nothing to restore.
+    internal func restoreSpeakerAfterReconnect() {}
+    #endif
 
     // MARK: - Connection handling
     /// Connects to the iOS cloglient to the Telnyx signaling server using the desired login credentials.
@@ -789,6 +816,7 @@ public class TxClient {
         return isConnected
     }
     
+    #if os(iOS)
     /// Answers an incoming call from CallKit and manages the active call flow.
     ///
     /// This method should be called from the CXProviderDelegate's `provider(_:perform:)` method
@@ -885,6 +913,7 @@ public class TxClient {
             releaseActiveCall(answerAction.callUUID)
         }
     }
+    #endif
 
     private func claimActiveCall(_ callId: UUID) -> Bool {
         activeCallLock.lock()
@@ -939,10 +968,12 @@ public class TxClient {
         resetPushVariables()
     }
 
+    #if os(iOS)
     private func failEndCallAction(_ endAction: CXEndCallAction) {
         resetPushVariables()
         endAction.fail()
     }
+    #endif
     
     /// Starts the INVITE timeout timer for VoIP push calls
     private func startInviteTimeout() {
@@ -995,6 +1026,7 @@ public class TxClient {
         Logger.log.i(message: "TxClient:: INVITE timeout handled - Call terminated with ORIGINATOR_CANCEL, CallKit events emitted")
     }
     
+    #if os(iOS)
     /// To end and control callKit active and conn
     public func endCallFromCallkit(endAction: CXEndCallAction,
                                    callId: UUID? = nil) {
@@ -1064,6 +1096,7 @@ public class TxClient {
             failEndCallAction(endAction)
         }
     }
+    #endif
     
     
     /// To disable push notifications for the current user
@@ -1682,7 +1715,7 @@ extension TxClient {
 
 // MARK: - Audio
 extension TxClient {
-
+    #if os(iOS)
     /// Select the internal earpiece as the audio output
     public func setEarpiece() {
         Logger.log.i(message: "[ACM_RESET] TxClient:: setEarpiece() called")
@@ -1708,6 +1741,17 @@ extension TxClient {
             Logger.log.e(message: "[ACM_RESET] TxClient:: Error setting Speaker \(error)")
         }
     }
+    #else
+    /// macOS has no earpiece/speaker output override; audio follows the selected output device.
+    public func setEarpiece() {
+        Logger.log.i(message: "TxClient:: setEarpiece() is a no-op on macOS")
+    }
+
+    /// macOS has no earpiece/speaker output override; audio follows the selected output device.
+    public func setSpeaker() {
+        Logger.log.i(message: "TxClient:: setSpeaker() is a no-op on macOS")
+    }
+    #endif
 }
 
 // MARK: - CallProtocol
@@ -2303,6 +2347,7 @@ extension TxClient : SocketDelegate {
     }
 }
 
+#if os(iOS)
 // MARK: - Audio session configurations
 extension TxClient {
     internal func resetAudioConfiguration() {
@@ -2353,3 +2398,15 @@ extension TxClient {
         return succeeded
     }
 }
+#endif
+
+#if !os(iOS)
+/// Stand-in for CallKit's `CXAnswerCallAction` / `CXEndCallAction`, which are unavailable on
+/// macOS. It is never instantiated there; it only lets the shared push/CallKit bookkeeping
+/// paths in `TxClient` compile unchanged.
+internal final class TxUnavailableCallAction {
+    let callUUID = UUID()
+    func fulfill() {}
+    func fail() {}
+}
+#endif

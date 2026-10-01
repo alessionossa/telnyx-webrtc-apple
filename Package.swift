@@ -5,6 +5,10 @@ import PackageDescription
 
 let package = Package(
     name: "telnyx-webrtc-ios",
+    platforms: [
+        .iOS(.v13),
+        .macOS(.v13)
+    ],
     products: [
         .library(
             name: "telnyx-webrtc-ios",

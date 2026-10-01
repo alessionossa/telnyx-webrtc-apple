@@ -86,7 +86,9 @@ class Peer : NSObject, WebRTCEventHandler {
 
     //Audio
     private var localAudioTrack: RTCAudioTrack?
+    #if os(iOS)
     private let rtcAudioSession =  RTCAudioSession.sharedInstance()
+    #endif
 
     //Video
     private var videoCapturer: RTCVideoCapturer?
@@ -254,6 +256,7 @@ class Peer : NSObject, WebRTCEventHandler {
         self.muteUnmuteAudio(mute: false)
     }
 
+    #if os(iOS)
     /// Configures the iOS device's audio session for optimal WebRTC call handling.
     /// This setup is crucial for proper audio routing and behavior during calls.
     ///
@@ -296,6 +299,14 @@ class Peer : NSObject, WebRTCEventHandler {
             self.rtcAudioSession.unlockForConfiguration()
         }
     }
+    #else
+    /// macOS has no `AVAudioSession` / `RTCAudioSession`. WebRTC's default macOS audio
+    /// device module starts playout and recording as soon as tracks are attached, so
+    /// there is nothing to configure here.
+    internal func configureAudioSession() {
+        Logger.log.i(message: "Peer:: configureAudioSession() is a no-op on macOS (default audio device module)")
+    }
+    #endif
 
     private func createAudioTrack() -> RTCAudioTrack {
         let audioConstrains = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
@@ -727,10 +738,14 @@ extension Peer {
                 wasSpeakerActive = forcedState
                 Logger.log.i(message: "[ACM_RESET] Peer:: Using forced speaker state from network change: \(wasSpeakerActive)")
             } else {
+                #if os(iOS)
                 // Detect current speaker state
                 let currentRoute = AVAudioSession.sharedInstance().currentRoute
                 wasSpeakerActive = currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
                 Logger.log.i(message: "[ACM_RESET] Peer:: Detected current speaker state: \(wasSpeakerActive)")
+                #else
+                wasSpeakerActive = false
+                #endif
             }
         }
         
@@ -760,7 +775,11 @@ extension Peer {
             Logger.log.i(message: "[ACM_RESET] Peer:: AudioDeviceModule reset sequence completed - original states restored")
 
             // After completing mute/unmute sequence, reset RTCAudioSession buffers
+            #if os(iOS)
             resetAVAudioSessionBuffers(preserveSpeakerState: preserveSpeakerState, wasSpeakerActive: wasSpeakerActive)
+            #else
+            Logger.log.i(message: "[ACM_RESET] Peer:: Audio session buffer reset skipped on macOS (no RTCAudioSession)")
+            #endif
             return
         }
 
@@ -778,6 +797,7 @@ extension Peer {
         }
     }
     
+    #if os(iOS)
     /// Resets RTCAudioSession buffer duration to optimal values to prevent audio delay accumulation
     /// Executes 3 times consecutively with 300ms intervals to ensure complete buffer reset
     /// 
@@ -886,6 +906,7 @@ extension Peer {
             }
         }
     }
+    #endif
     
 }
 // MARK: -RTCPeerConnectionDelegate

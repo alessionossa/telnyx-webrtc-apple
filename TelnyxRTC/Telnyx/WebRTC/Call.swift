@@ -1797,8 +1797,10 @@ extension Call {
         let url = URL(fileURLWithPath: path)
         do {
             let audioPlayer = try AVAudioPlayer(contentsOf: url)
+            #if os(iOS)
             try AVAudioSession.sharedInstance().setCategory(AVAudioSession.Category.ambient)
             try AVAudioSession.sharedInstance().setActive(true)
+            #endif
             return audioPlayer
         } catch{
             
@@ -1883,8 +1885,13 @@ extension Call {
             Logger.log.w(message: "[ACM_RESET] Call:: ICE connection disconnected during active call - resetting audio buffers")
             
             // Save current speaker state immediately before iOS can change audio route due to network change
+            #if os(iOS)
             let currentRoute = AVAudioSession.sharedInstance().currentRoute
             speakerStateAtNetworkChange = currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+            #else
+            // macOS has no AVAudioSession routes; speaker/earpiece switching does not apply.
+            speakerStateAtNetworkChange = false
+            #endif
             Logger.log.i(message: "Call:: Saved speaker state at network disconnect: \(speakerStateAtNetworkChange ?? false)")
 
             // Reset audio device module to clear accumulated buffers
