@@ -195,7 +195,20 @@ class Peer : NSObject, WebRTCEventHandler {
         RTCInitializeSSL()
         let videoEncoderFactory = RTCDefaultVideoEncoderFactory()
         let videoDecoderFactory = RTCDefaultVideoDecoderFactory()
+        #if os(iOS)
         return RTCPeerConnectionFactory(encoderFactory: videoEncoderFactory, decoderFactory: videoDecoderFactory)
+        #else
+        // The plain initializer leaves `audioDeviceModule` nil. Only this one creates the
+        // Objective-C wrapper that lists and selects capture/playout devices per process, which
+        // macOS needs: there is no AVAudioSession, and the default module would otherwise follow
+        // the system default devices. `.platformDefault` is the CoreAudio HAL module (plain
+        // device selection, no voice processing); see TxClient+AudioDevices.swift for the API.
+        return RTCPeerConnectionFactory(audioDeviceModuleType: .platformDefault,
+                                        bypassVoiceProcessing: false,
+                                        encoderFactory: videoEncoderFactory,
+                                        decoderFactory: videoDecoderFactory,
+                                        audioProcessingModule: nil)
+        #endif
     }()
 
 
@@ -379,9 +392,16 @@ class Peer : NSObject, WebRTCEventHandler {
             return
         }
 
-        // Apply the ordered codec preferences
-        audioTransceiver.setCodecPreferences(orderedCodecs)
-        Logger.log.i(message: "Peer:: Applied codec preferences to audio transceiver: \(preferredCodecs.map { $0.mimeType }.joined(separator: ", "))")
+        // Apply the ordered codec preferences. WebRTC M150 (webrtc-sdk build) added a throwing
+        // `setCodecPreferences:error:` and deprecated the void `setCodecPreferences:`. Because the
+        // two share a Swift base name, the importer keeps an empty `error: ()` placeholder on the
+        // throwing one; that is the only form Swift exposes.
+        do {
+            try audioTransceiver.setCodecPreferences(orderedCodecs, error: ())
+            Logger.log.i(message: "Peer:: Applied codec preferences to audio transceiver: \(preferredCodecs.map { $0.mimeType }.joined(separator: ", "))")
+        } catch {
+            Logger.log.e(message: "Peer:: setCodecPreferences failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: Signaling OFFER

@@ -923,10 +923,13 @@ extension Call {
             return
         }
         self.answerCustomHeaders = customHeaders
+        // Must be set before configureStatsReporter(): the reporter is only created when
+        // `debug || enableQualityMetrics`, so setting it afterwards (as before) left inbound
+        // calls without a reporter and `onCallQualityChange` never fired. Mirrors invite().
+        self.enableQualityMetrics = debug
         self.configureStatsReporter()
         Logger.log.i(message: "[TRICKLE-ICE] Call:: Creating Peer for inbound call answer with useTrickleIce = \(self.useTrickleIce)")
         self.peer = Peer(iceServers: self.iceServers, forceRelayCandidate: self.forceRelayCandidate, useTrickleIce: self.useTrickleIce, isAnswering: true)
-        self.enableQualityMetrics = debug
         self.startStatsReporter()
         self.peer?.delegate = self
         self.peer?.socket = self.socket
