@@ -32,8 +32,11 @@ let package = Package(
         // RTCPeerConnectionFactory.audioDeviceModule (per-process input/output device selection),
         // which the stock binary lacks on macOS. Module name (WebRTC) and type prefix (RTC) are
         // unchanged. Declared as a binary target rather than depending on the Specs package
-        // because that package's manifest (tools-version 5.9 with `.visionOS(.v26)`) does not
-        // compile with Xcode 27's SwiftPM.
+        // because that package's manifest declares tools-version 5.9 but uses `.visionOS(.v26)`
+        // (PackageDescription 6.2), so it fails to compile on any SwiftPM, whatever tools-version
+        // the dependent package declares: https://github.com/webrtc-sdk/Specs/issues/31 (open, no
+        // fixed tag as of 2026-10-09). Specs' manifest is itself this one binary target with the
+        // same URL and checksum, so the exact pin here is the intended form, not a workaround.
         .binaryTarget(
             name: "WebRTC",
             url: "https://github.com/webrtc-sdk/Specs/releases/download/150.7871.01/WebRTC.xcframework.zip",
