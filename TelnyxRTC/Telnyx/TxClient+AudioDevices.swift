@@ -51,36 +51,38 @@ public enum TxAudioDirection: Sendable {
 extension TxClient {
 
     /// `true` when the shared factory exposes an audio device module (macOS long initializer).
-    public static var hasAudioDeviceModule: Bool { deviceSelector.hasAudioDeviceModule }
+    public static var hasAudioDeviceModule: Bool { audioDeviceSelector.hasAudioDeviceModule }
 
     /// Capture devices WebRTC can use, in the module's own order (index 0 is the default entry).
-    public static func audioInputDevices() -> [TxAudioDevice] { deviceSelector.inputDevices() }
+    public static func audioInputDevices() -> [TxAudioDevice] { audioDeviceSelector.inputDevices() }
 
     /// Playout devices WebRTC can use, in the module's own order (index 0 is the default entry).
-    public static func audioOutputDevices() -> [TxAudioDevice] { deviceSelector.outputDevices() }
+    public static func audioOutputDevices() -> [TxAudioDevice] { audioDeviceSelector.outputDevices() }
 
     /// The capture device the module currently reports, or nil if none is selected.
-    public static var currentAudioInputDevice: TxAudioDevice? { deviceSelector.currentInputDevice }
+    public static var currentAudioInputDevice: TxAudioDevice? { audioDeviceSelector.currentInputDevice }
 
     /// The playout device the module currently reports, or nil if none is selected.
-    public static var currentAudioOutputDevice: TxAudioDevice? { deviceSelector.currentOutputDevice }
+    public static var currentAudioOutputDevice: TxAudioDevice? { audioDeviceSelector.currentOutputDevice }
 
     /// Selects the capture device by CoreAudio UID; `nil` selects the system default entry.
     /// Call it between calls (before `Call.answer` / `newCall`), never during one.
     @discardableResult
     public static func setAudioInputDevice(uid: String?) -> TxAudioDeviceResult {
-        deviceSelector.setDevice(.input, uid: uid)
+        audioDeviceSelector.setDevice(.input, uid: uid)
     }
 
     /// Selects the playout device by CoreAudio UID; `nil` selects the system default entry.
     /// Call it between calls (before `Call.answer` / `newCall`), never during one.
     @discardableResult
     public static func setAudioOutputDevice(uid: String?) -> TxAudioDeviceResult {
-        deviceSelector.setDevice(.output, uid: uid)
+        audioDeviceSelector.setDevice(.output, uid: uid)
     }
 
-    /// Created on first use, which also warms up the shared factory's audio device module.
-    private static let deviceSelector = TxAudioDeviceSelector(factory: Peer.factory, logPrefix: "TxClient")
+    /// The selector behind the static API above, for code written against `TxAudioDeviceSelector`
+    /// so it can serve this factory and a second WebRTC stack's alike. Created on first use, which
+    /// also warms up the shared factory's audio device module.
+    public static let audioDeviceSelector = TxAudioDeviceSelector(factory: Peer.factory, logPrefix: "TxClient")
 }
 
 /// Lists and selects the capture/playout devices of one `RTCPeerConnectionFactory`'s audio device
